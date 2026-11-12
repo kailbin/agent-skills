@@ -110,3 +110,4 @@ L4 生产      ...（可选）
 
 - 2026-11-12：初版，支持 Spring Cloud、AWS；Java 项目统一用 Maven 多模块构建。
 - 2026-11-12：reference 改为「语言生态 × 技术形态」两个维度，不再按具体框架编写；新增调研流程、逐模块实测、知识沉淀步骤。来自 Spring Cloud CircuitBreaker 的试用反馈。
+- 2026-11-12：Java 项目不再继承 spring-boot-starter-parent，改为 import BOM，并列出需要自己补上的构建配置。

@@ -15,7 +15,7 @@
 
 ```
 <project>/                                  # 例：Spring-Cloud-CircuitBreaker
-├── pom.xml                                 # 根 POM：只做聚合与版本管理
+├── pom.xml                                 # 根 POM：聚合、版本管理（import BOM）、统一构建配置
 ├── mvnw / mvnw.cmd / .mvn/
 ├── <prefix>-common/                        # 公共代码：DTO、统一返回体、客户端封装、测试工具（如可控时钟）
 ├── <prefix>-<道具>/                         # 演示道具，例如可以注入故障的下游服务（见 domain reference）
@@ -61,12 +61,26 @@ common 只依赖必需的库；会被纯 Java 模块依赖时，Web 等依赖标
 
 ## 根 POM 要求
 
-- 继承框架的 parent（如 `spring-boot-starter-parent`），再用 `<dependencyManagement>` import 其他 BOM。
-  根 POM 的注释中要讲清楚「继承 parent」和「import BOM」的区别，这本身就是一个知识点。
+**不继承框架的 parent**（如 `spring-boot-starter-parent`），所有 BOM 都通过 `<dependencyManagement>` import 引入，
+parent 的位置留给公司或个人的统一父 POM。
+
+- import 多个 BOM 时，**先声明的优先**：Spring Boot 的 BOM 放在最前面，Spring Cloud、Spring AI 等放在后面。
 - 子模块中**不写版本号**；项目内部模块的版本也在根 POM 的 dependencyManagement 中统一声明。
-- `<properties>` 中注释写明各版本之间的兼容关系。
-- 只有可以运行的模块才声明 spring-boot-maven-plugin。
+- `<properties>` 中声明框架版本，并注释写明各版本之间的兼容关系。
 - 测试依赖（如 spring-boot-starter-test）放在根 POM 中统一引入。
+- 根 POM 的注释中要讲清楚「import BOM」与「继承 parent」的区别，以及下面这些需要自己补上的配置，这本身就是一个知识点。
+
+不继承 parent 时，必须自己补上的构建配置：
+
+| 配置 | 写法 | 漏掉的后果 |
+|---|---|---|
+| 编码、Java 版本 | `project.build.sourceEncoding=UTF-8`、`maven.compiler.release` | 中文乱码；字节码版本不对 |
+| 编译器 `-parameters` | maven-compiler-plugin `<parameters>true</parameters>` | **编译正常，运行时报错**：`@RequestParam int n`、`@PathVariable String id` 这类未写名字的参数无法绑定 |
+| 插件版本 | `<pluginManagement>` 中固定版本，与所用 Boot 版本的 spring-boot-dependencies 中声明的插件版本一致 | 使用 Maven 内置的旧版本插件，行为不一致 |
+| spring-boot-maven-plugin | 在 pluginManagement 中声明版本，并配置 `repackage` execution；只有可运行的模块在自己的 `<build>` 中引用（不写版本） | `java -jar` 报 `no main manifest attribute` |
+
+插件版本的查法：打开 `spring-boot-dependencies-<版本>.pom`，搜索 `maven-compiler-plugin.version` 等属性。
+自检时确认可运行模块的 jar 中有 `Start-Class`：`unzip -p xxx.jar META-INF/MANIFEST.MF`。
 
 ## 可运行入口
 
