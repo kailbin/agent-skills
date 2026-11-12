@@ -82,6 +82,77 @@ parent 的位置留给公司或个人的统一父 POM。
 插件版本的查法：打开 `spring-boot-dependencies-<版本>.pom`，搜索 `maven-compiler-plugin.version` 等属性。
 自检时确认可运行模块的 jar 中有 `Start-Class`：`unzip -p xxx.jar META-INF/MANIFEST.MF`。
 
+## 默认依赖：Lombok + SLF4J
+
+所有 Maven 项目都在**根 POM 的 `<dependencies>`** 中引入这两个依赖，所有模块默认可用：
+
+```xml
+<properties>
+    <!-- 与 spring-boot-dependencies 中的 lombok.version 保持一致。
+         import BOM 只导入依赖版本，不导入 BOM 中的 <properties>，所以 ${lombok.version} 要自己声明 -->
+    <lombok.version>x.y.z</lombok.version>
+</properties>
+
+<dependencies>
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <!-- 只在编译期使用，不会打进 jar -->
+        <scope>provided</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+    </dependency>
+</dependencies>
+```
+
+**Lombok 必须在 maven-compiler-plugin 中显式声明为注解处理器**：
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <version>${maven-compiler-plugin.version}</version>
+    <configuration>
+        <parameters>true</parameters>
+        <annotationProcessorPaths>
+            <path>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </path>
+        </annotationProcessorPaths>
+    </configuration>
+</plugin>
+```
+
+- 【坑】从 JDK 23 开始，javac 不再默认执行 classpath 上的注解处理器。不显式声明时，`@Slf4j`、`@Getter` 等注解不会生效，
+  编译报错 `cannot find symbol: variable log`。
+- 【坑】`annotationProcessorPaths` 中的 `<version>` 不受 dependencyManagement 管理，必须写明，所以根 POM 要声明 `lombok.version`。
+- 在 JDK 24+ 上编译时，Lombok 会打印 `sun.misc.Unsafe::objectFieldOffset has been called by lombok.permit.Permit` 警告，
+  不影响编译结果，在 README 中说明一句即可。
+- 项目中还用到其他注解处理器（如 MapStruct、spring-boot-configuration-processor）时，要一起列在 `annotationProcessorPaths` 中，
+  一旦显式声明，就只会执行列出的处理器。
+- 版本查法：`spring-boot-dependencies-<版本>.pom` 中的 `lombok.version`；没有使用 Spring Boot 时，到 Maven Central 查最新版本，并确认它支持所用的 JDK 版本。
+- SLF4J 只是日志门面：Spring Boot 模块由 starter 提供 Logback 实现；纯 Java 模块（如 L3 的测试模块）需要输出日志时，
+  再加 `logback-classic`（runtime 或 test scope），否则 SLF4J 会提示没有绑定实现，日志不会输出。
+- 根目录放一个 `lombok.config`：
+
+  ```properties
+  config.stopBubbling = true
+  # 生成的代码带上 @Generated，覆盖率统计会忽略它们
+  lombok.addLombokGeneratedAnnotation = true
+  ```
+
+**示例代码中怎样使用 Lombok**：用来去掉噪音，不要遮住知识点。
+
+| 推荐 | 不推荐 |
+|---|---|
+| `@Slf4j` 代替 `LoggerFactory.getLogger(...)` | 用 `@Data` 写 DTO：不可变的数据用 `record` |
+| `@RequiredArgsConstructor` 用于普通的构造器注入 | 知识点本身就是构造过程时（例如构造器中创建熔断器），仍然手写构造器 |
+| `@Getter`、`@Builder` 用于配置类、复杂的值对象 | `@SneakyThrows`、`val` 等会让读者困惑的特性 |
+
 ## 可运行入口
 
 | 场景 | 入口 |
