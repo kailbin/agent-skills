@@ -64,10 +64,15 @@ common 只依赖必需的库；会被纯 Java 模块依赖时，Web 等依赖标
 **不继承框架的 parent**（如 `spring-boot-starter-parent`），所有 BOM 都通过 `<dependencyManagement>` import 引入，
 parent 的位置留给公司或个人的统一父 POM。
 
+- 元素顺序：`<modules>` → `<properties>` → `<dependencies>` → `<dependencyManagement>` → `<build>`，
+  默认依赖放在 dependencyManagement **上面**，打开根 POM 就能看到每个模块都会带上什么。
 - import 多个 BOM 时，**先声明的优先**：Spring Boot 的 BOM 放在最前面，Spring Cloud、Spring AI 等放在后面。
-- 子模块中**不写版本号**；项目内部模块的版本也在根 POM 的 dependencyManagement 中统一声明。
+  【坑】想单独升级某个组件（例如在 Spring Cloud 之后再 import `resilience4j-bom` 的新版本）是**不会生效**的：
+  Spring Cloud 的 BOM 已经管理了这些依赖，先声明的优先。要升级就把它的 BOM 放到 Spring Cloud 前面，
+  并确认与 Spring Cloud 兼容；用 `mvn dependency:tree` 确认实际解析出的版本。
+- 三方依赖在子模块中**不写版本号**，由 BOM 管理。
+- **项目内部模块不放进 dependencyManagement**，在使用的地方直接写 `<version>${project.version}</version>`。
 - `<properties>` 中声明框架版本，并注释写明各版本之间的兼容关系。
-- 测试依赖（如 spring-boot-starter-test）放在根 POM 中统一引入。
 - 根 POM 的注释中要讲清楚「import BOM」与「继承 parent」的区别，以及下面这些需要自己补上的配置，这本身就是一个知识点。
 
 不继承 parent 时，必须自己补上的构建配置：
@@ -82,9 +87,9 @@ parent 的位置留给公司或个人的统一父 POM。
 插件版本的查法：打开 `spring-boot-dependencies-<版本>.pom`，搜索 `maven-compiler-plugin.version` 等属性。
 自检时确认可运行模块的 jar 中有 `Start-Class`：`unzip -p xxx.jar META-INF/MANIFEST.MF`。
 
-## 默认依赖：Lombok + SLF4J
+## 默认依赖：Lombok + Logback + JUnit
 
-所有 Maven 项目都在**根 POM 的 `<dependencies>`** 中引入这两个依赖，所有模块默认可用：
+根 POM 的 `<dependencies>` 中**只放这三个**轻量、几乎每个模块都需要的依赖：
 
 ```xml
 <properties>
@@ -101,11 +106,48 @@ parent 的位置留给公司或个人的统一父 POM。
         <scope>provided</scope>
     </dependency>
     <dependency>
-        <groupId>org.slf4j</groupId>
-        <artifactId>slf4j-api</artifactId>
+        <!-- 日志实现，传递引入 slf4j-api -->
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <scope>test</scope>
     </dependency>
 </dependencies>
 ```
+
+- **不要**把 `spring-boot-starter-test` 这类会带来大量传递依赖的测试套件放进根 POM。哪个模块需要就在哪个模块中声明：
+  - 用 `@SpringBootTest` 的模块：`spring-boot-starter-test`（包含 AssertJ、Mockito 等）
+  - 只需要断言的纯 Java 测试：`assertj-core`（test）
+- Spring Boot 4 的 BOM 中 `junit-jupiter` 是 JUnit 6，API 与 JUnit 5 相同。
+
+### 打印日志的模块放一个 logback.xml
+
+Logback 在没有配置文件时默认使用 **DEBUG** 级别，第三方库（如 Resilience4j）的调试日志会刷屏，测试输出也会被淹没。
+所以**会打印日志的模块**（Spring Boot 应用、启动 Spring 容器的测试模块、代码或依赖的库会打日志的模块）
+都在 `src/main/resources/logback.xml` 中放一份配置，默认输出到控制台：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
+```
+
+- 被其他模块依赖的库模块（如 `<prefix>-common`）**不放** logback.xml，避免和使用方的配置冲突。
+- 模式中保留 `[%thread]`：很多原理实验（线程切换、线程池）要靠线程名观察。
+- Spring Boot 应用中使用 logback.xml 时，`logging.level.*` 配置项仍然有效。
+- 自检：构建输出中不应该出现大量 `DEBUG` 日志。
 
 **Lombok 必须在 maven-compiler-plugin 中显式声明为注解处理器**：
 
@@ -135,8 +177,6 @@ parent 的位置留给公司或个人的统一父 POM。
 - 项目中还用到其他注解处理器（如 MapStruct、spring-boot-configuration-processor）时，要一起列在 `annotationProcessorPaths` 中，
   一旦显式声明，就只会执行列出的处理器。
 - 版本查法：`spring-boot-dependencies-<版本>.pom` 中的 `lombok.version`；没有使用 Spring Boot 时，到 Maven Central 查最新版本，并确认它支持所用的 JDK 版本。
-- SLF4J 只是日志门面：Spring Boot 模块由 starter 提供 Logback 实现；纯 Java 模块（如 L3 的测试模块）需要输出日志时，
-  再加 `logback-classic`（runtime 或 test scope），否则 SLF4J 会提示没有绑定实现，日志不会输出。
 - 根目录放一个 `lombok.config`：
 
   ```properties

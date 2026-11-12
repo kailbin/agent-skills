@@ -112,3 +112,5 @@ L4 生产      ...（可选）
 - 2026-11-12：reference 改为「语言生态 × 技术形态」两个维度，不再按具体框架编写；新增调研流程、逐模块实测、知识沉淀步骤。来自 Spring Cloud CircuitBreaker 的试用反馈。
 - 2026-11-12：Java 项目不再继承 spring-boot-starter-parent，改为 import BOM，并列出需要自己补上的构建配置。
 - 2026-11-12：Maven 项目默认引入 Lombok 与 SLF4J；Lombok 在 maven-compiler-plugin 中显式声明为注解处理器（JDK 23+ 必需，已在 JDK 25 上实测）。
+- 2026-11-12：根 POM 默认依赖改为 lombok / logback-classic / junit-jupiter，spring-boot-starter-test 等按需在模块中声明；
+  内部模块不进 dependencyManagement，直接用 `${project.version}`；打印日志的模块放 logback.xml。
