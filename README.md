@@ -19,7 +19,7 @@ npx skills update
 
 | Skill | 用途 | 已支持的技术方向 |
 |---|---|---|
-| [kai-learn-by-demo](skills/kai-learn-by-demo/SKILL.md) | 学习新技术时，生成注释详尽、按难度分层的示例项目 | Spring Cloud、AWS（其他技术走通用规则） |
+| [kai-learn-by-demo](skills/kai-learn-by-demo/SKILL.md) | 学习新技术时，生成注释详尽、按难度分层、经过实测的示例项目 | 语言生态：Java（Maven）、Python<br>技术形态：框架与库、中间件、分布式治理、云服务、AI 应用 |
 
 ## 贡献
 
